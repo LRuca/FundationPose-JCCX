@@ -1,0 +1,97 @@
+{
+  "generated_at": "2026-05-04",
+  "font": "C:\\Windows\\Fonts\\NotoSansSC-VF.ttf",
+  "dataset": {
+    "train_images": 95,
+    "val_images": 24,
+    "train_labels": 95,
+    "val_labels": 24
+  },
+  "yolo": {
+    "path": "C:/Users/lenovo/Desktop/JXCX/report/assets/yolo_training_curves.png",
+    "epochs": 99,
+    "first_box": 1.65898,
+    "last_box": 0.59796,
+    "first_seg": 2.27856,
+    "last_seg": 0.51922,
+    "first_cls": 5.12886,
+    "last_cls": 0.92758,
+    "best_seg_epoch": 98,
+    "best_seg_loss": 0.51836,
+    "final_lr": 5.96e-05,
+    "results_tail": {
+      "epoch": "99",
+      "time": "715.64",
+      "train/box_loss": "0.59796",
+      "train/seg_loss": "0.51922",
+      "train/cls_loss": "0.92758",
+      "train/dfl_loss": "0.92954",
+      "train/sem_loss": "0",
+      "metrics/precision(B)": "0",
+      "metrics/recall(B)": "0",
+      "metrics/mAP50(B)": "0",
+      "metrics/mAP50-95(B)": "0",
+      "metrics/precision(M)": "0",
+      "metrics/recall(M)": "0",
+      "metrics/mAP50(M)": "0",
+      "metrics/mAP50-95(M)": "0",
+      "val/box_loss": "0",
+      "val/seg_loss": "0",
+      "val/cls_loss": "0",
+      "val/dfl_loss": "0",
+      "val/sem_loss": "0",
+      "lr/pg0": "5.96e-05",
+      "lr/pg1": "5.96e-05",
+      "lr/pg2": "5.96e-05"
+    }
+  },
+  "live_frame": {
+    "frame_index": 57,
+    "color_source": "Color_640x360_1_791371631ms.png",
+    "depth_source": "Depth_640x360_0_1777473539279ms.png",
+    "updated_at": "2026-04-29T22:38:59.8285051+08:00",
+    "depth_unit": "millimeter_uint16",
+    "width": 640,
+    "height": 360,
+    "depth_valid_pixels": 47020,
+    "depth_max_mm": 351
+  },
+  "mask": {
+    "image": "C:\\Users\\lenovo\\Desktop\\JXCX\\FoundationPose\\live_orbbec\\color.png",
+    "mask": "C:\\Users\\lenovo\\Desktop\\JXCX\\FoundationPose\\live_orbbec\\mask_yolo.png",
+    "class_name": "needle",
+    "class_id": 0,
+    "confidence": 0.7572384476661682,
+    "area": 2235,
+    "num_candidates": 1,
+    "height": 360,
+    "width": 640,
+    "updated_at": "2026-04-29T22:39:00+0800"
+  },
+  "pose_outputs": {
+    "pose_txt": 25,
+    "track_vis_png": 24
+  },
+  "model_assets": {
+    "final_stl": "C:/Users/lenovo/Desktop/JXCX/model/fixed_unnamed_object_3/needle_structured_tail_reconstruction_v3.stl",
+    "final_glb": "C:/Users/lenovo/Desktop/JXCX/model/fixed_unnamed_object_3/needle_structured_tail_reconstruction_v3.glb",
+    "final_obj": "C:/Users/lenovo/Desktop/JXCX/model/fixed_unnamed_object_3/needle_structured_tail_reconstruction_v3.obj",
+    "contact_sheet": "C:/Users/lenovo/Desktop/JXCX/report/assets/model_iteration_contact_sheet.png"
+  },
+  "log_evidence": {
+    "counts": {
+      "double_dtype": 3,
+      "frame_timeout": 1,
+      "zero_depth": 3,
+      "mask_depth_overlap": 9,
+      "file_race": 11
+    },
+    "examples": {
+      "double_dtype": "foundationpose_mug_20260428_195421_879.log.err",
+      "frame_timeout": "foundationpose_mug_20260428_202748_206.log.err",
+      "zero_depth": "foundationpose_mug_20260429_211950_113.log.err",
+      "mask_depth_overlap": "foundationpose_mug_20260429_212423_951.log.err",
+      "file_race": "orbbec_capture_20260428_192847_672.log.err"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+path: C:/Users/lenovo/Desktop/JXCX/data/needle_lwt/needle_lwt_yolo_split
+train: images/train
+val: images/val
+
+names:
+  0: needle

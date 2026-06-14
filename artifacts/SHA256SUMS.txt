@@ -1,0 +1,1 @@
+EB666AA07DB9147972DEA5E6A251B2DB2BCC81A87FC5B205281B5586D3C95411  ../model/fixed_unnamed_object_3/needle_structured_tail_reconstruction_v3.stl

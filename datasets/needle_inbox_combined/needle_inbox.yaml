@@ -1,0 +1,6 @@
+path: C:/Users/lenovo/Desktop/JXCX/datasets/needle_inbox_combined
+train: images/train
+val: images/val
+
+names:
+  0: needle_inbox

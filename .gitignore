@@ -1,0 +1,68 @@
+# Python and editor state
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+.idea/
+.vscode/
+
+# Local third-party checkout reconstructed by scripts/ubuntu/setup_foundationpose.sh
+/FoundationPose/
+/third_party/
+
+# Windows-only capture/build dependencies and generated applications
+/OrbbecSDK_v1.10.16_win_x64/
+/OrbbecSDK_v1.10.16_win_x64.zip
+/usbipd-win_*.msi
+/pyorbbecsdk-*.whl
+/build/
+/dist/
+/.deps_model_fix/
+
+# Download caches and local wheel caches
+/downloads/
+/wheelhouse/
+/wget-log
+
+# Model checkpoints are distributed separately as JXCX_YOLO_WEIGHTS.zip.
+*.pt
+/JXCX_YOLO_WEIGHTS*.zip
+/.weights_package_stage*/
+
+# Runtime output and logs
+/Log/
+/logs/
+/video_frames/
+*.log
+*.err.txt
+*.out.txt
+/orbbec_cmds.txt
+/test_combined_result.png
+/test_tracking.mp4
+
+# Raw/redundant source exports. Curated meshes under model/fixed_unnamed_object_3 stay tracked.
+/model/未命名对象 3_export/
+/model/未命名对象 3_export.zip
+/model/未命名对象 3_raw_ObjectMaskOn(1).usdz
+/model/image_implement/
+/model/74a2efd4fb95d156c380e6814c43d799.jpg
+
+# Dataset archives and caches; unpacked images/labels remain tracked via Git LFS.
+/data/needle_lwt.zip
+/data/needle_lwt/needle_lwt/
+/data/needle_inbox_raw/
+/data/needle_raw/
+*.cache
+
+# Keep only compact, useful run metadata and final weights.
+/runs/**/train_batch*.jpg
+/runs/**/val_batch*.jpg
+/runs/**/confusion_matrix*.png
+/runs/**/*_curve.png
+/runs/**/predict*/
+/runs/**/weights/
+
+# Reports are useful, but rendered intermediate pages are not.
+/report/render_page_*.png
