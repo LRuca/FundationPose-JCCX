@@ -66,3 +66,16 @@ venv/
 
 # Reports are useful, but rendered intermediate pages are not.
 /report/render_page_*.png
+/report/*.pdf
+/paper/*.pdf
+
+# Nonessential model review/renders; keep compact CAD-like meshes needed by FoundationPose.
+/model/fixed_unnamed_object_3/rgb_review/
+/model/fixed_unnamed_object_3/*preview*.png
+/model/fixed_unnamed_object_3/*render*.png
+/model/fixed_unnamed_object_3/texture.png
+/model/fixed_unnamed_object_3/textured_cleaned.obj
+/model/fixed_unnamed_object_3/textured_cleaned.mtl
+/model/fixed_unnamed_object_3/cleaned_smoothed.*
+/model/fixed_unnamed_object_3/reference_image_implement_sheet.png
+/model/fixed_unnamed_object_3/rgb_sample_00026.png
