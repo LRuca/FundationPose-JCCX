@@ -45,7 +45,12 @@ except:
 try:
   import mycpp.build.mycpp as mycpp
 except:
-  mycpp = None
+  class _MyCppFallback:
+    @staticmethod
+    def cluster_poses(angle_thresh, dist_thresh, poses, symmetry_tfs):
+      logging.warning("mycpp extension is unavailable; using unclustered pose candidates")
+      return poses
+  mycpp = _MyCppFallback()
 try:
   from bundlesdf.mycuda import common
 except:
@@ -394,6 +399,14 @@ if wp is not None:
       depth_out = depth_out.data.cpu().numpy()
     return depth_out
 
+if wp is None:
+  def bilateral_filter_depth(depth, radius=2, zfar=100, sigmaD=2, sigmaR=100000, device='cuda'):
+    logging.warning("warp is unavailable; skipping bilateral depth filtering")
+    return depth
+
+  def erode_depth(depth, radius=2, depth_diff_thres=0.001, ratio_thres=0.8, zfar=100, device='cuda'):
+    logging.warning("warp is unavailable; skipping depth erosion")
+    return depth
 
 
 def depth2xyzmap(depth, K, uvs=None):

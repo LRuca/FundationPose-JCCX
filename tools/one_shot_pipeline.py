@@ -11,6 +11,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+os.environ.setdefault("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
+
 # Add FoundationPose to path
 ROOT = Path(r"C:\Users\lenovo\Desktop\JXCX")
 sys.path.insert(0, str(ROOT / "FoundationPose"))

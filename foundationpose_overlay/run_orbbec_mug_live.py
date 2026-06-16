@@ -6,12 +6,22 @@ from estimater import *
 import argparse
 import imageio.v2 as imageio
 import json
+import os
+from pathlib import Path
+import shutil
 import time
 
 
+def first_existing(*paths):
+  for path in paths:
+    if os.path.exists(path):
+      return path
+  return paths[0]
+
+
 def read_frame(live_dir):
-  color_file = f'{live_dir}/color.png'
-  depth_file = f'{live_dir}/depth.png'
+  color_file = first_existing(f'{live_dir}/color.ppm', f'{live_dir}/color.png')
+  depth_file = first_existing(f'{live_dir}/depth.pgm', f'{live_dir}/depth.png')
   k_file = f'{live_dir}/cam_K.txt'
   meta_file = f'{live_dir}/frame.json'
 
@@ -85,6 +95,33 @@ def validate_mask_depth(depth, mask, min_valid_points):
     )
 
 
+def repair_depth_under_mask(depth, mask, radius=9, min_valid_points=5):
+  mask_bool = mask.astype(bool)
+  if not mask_bool.any():
+    return depth, 0, 0.0
+  current_valid = (depth >= 0.001) & mask_bool
+  if int(current_valid.sum()) >= min_valid_points:
+    return depth, 0, 0.0
+
+  kernel = np.ones((radius * 2 + 1, radius * 2 + 1), dtype=np.uint8)
+  search = cv2.dilate(mask_bool.astype(np.uint8), kernel, iterations=1).astype(bool)
+  source = search & (depth >= 0.001)
+  if int(source.sum()) < min_valid_points:
+    return depth, 0, 0.0
+
+  fill_value = float(np.median(depth[source]))
+  repaired = depth.copy()
+  fill = mask_bool & (repaired < 0.001)
+  repaired[fill] = fill_value
+  filled_count = int(fill.sum())
+  print(
+    f'depth repair: filled={filled_count}, fill_value_m={fill_value:.4f}, '
+    f'source_valid={int(source.sum())}, radius={radius}',
+    flush=True,
+  )
+  return repaired, filled_count, fill_value
+
+
 def wait_for_mask(mask_file, target_shape, min_area, timeout=30):
   deadline = time.time() + timeout
   last_err = None
@@ -125,11 +162,15 @@ if __name__ == '__main__':
   parser.add_argument('--mask_timeout', type=float, default=60)
   parser.add_argument('--min_mask_area', type=int, default=300)
   parser.add_argument('--min_valid_depth_points', type=int, default=20)
+  parser.add_argument('--repair_mask_depth', action='store_true')
+  parser.add_argument('--repair_radius', type=int, default=9)
   parser.add_argument('--est_refine_iter', type=int, default=5)
   parser.add_argument('--track_refine_iter', type=int, default=2)
   parser.add_argument('--debug', type=int, default=1)
   parser.add_argument('--debug_dir', type=str, default=f'{code_dir}/debug_orbbec_mug')
   parser.add_argument('--max_frames', type=int, default=0, help='0 means run forever.')
+  parser.add_argument('--stabilize_roll', type=int, default=1, help='对轴对称物体去除绕对称轴的自转(可视化)')
+  parser.add_argument('--save_rgb', type=int, default=1, help='保存逐帧原始 RGB-D，支持离线回放/消融')
   parser.add_argument('--check_only', action='store_true', help='Read one live frame and mug mask without running FoundationPose.')
   args = parser.parse_args()
 
@@ -145,6 +186,13 @@ if __name__ == '__main__':
     timeout=args.mask_timeout,
   )
   print(f'using mask={args.mask_file}, area={mask_area}')
+  if args.repair_mask_depth:
+    depth, _, _ = repair_depth_under_mask(
+      depth=depth,
+      mask=init_mask,
+      radius=args.repair_radius,
+      min_valid_points=args.min_valid_depth_points,
+    )
   validate_mask_depth(depth=depth, mask=init_mask, min_valid_points=args.min_valid_depth_points)
   if args.check_only:
     raise SystemExit(0)
@@ -153,10 +201,42 @@ if __name__ == '__main__':
     raise RuntimeError(f'Mug mesh not found: {args.mesh_file}')
 
   mesh = force_mesh_float32(trimesh.load(args.mesh_file))
-  os.system(f'rm -rf {args.debug_dir}/* && mkdir -p {args.debug_dir}/track_vis {args.debug_dir}/ob_in_cam')
+  debug_dir = Path(args.debug_dir)
+  if debug_dir.exists():
+    shutil.rmtree(debug_dir)
+  (debug_dir / 'track_vis').mkdir(parents=True, exist_ok=True)
+  (debug_dir / 'ob_in_cam').mkdir(parents=True, exist_ok=True)
 
   to_origin, extents = trimesh.bounds.oriented_bounds(mesh)
   bbox = np.stack([-extents/2, extents/2], axis=0).reshape(2,3)
+  sym_axis = int(np.argmax(extents))  # 最长 extent = 针长轴 = 对称轴
+  if args.save_rgb:
+    (debug_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (debug_dir / 'depth').mkdir(parents=True, exist_ok=True)
+    np.savetxt(debug_dir / 'cam_K.txt', K)
+  roll_state = {'u': None}
+
+  def stabilize_center(cp):
+    """去除绕对称轴的自转：保持对称轴方向，垂直方向跟随上一帧最小旋转。"""
+    if not args.stabilize_roll:
+      return cp
+    R = cp[:3, :3]
+    a = R[:, sym_axis]; a = a / (np.linalg.norm(a) + 1e-9)
+    u = R[:, (sym_axis + 1) % 3] if roll_state['u'] is None else roll_state['u']
+    u = u - (u @ a) * a
+    if np.linalg.norm(u) < 1e-6:
+      u = R[:, (sym_axis + 1) % 3] - (R[:, (sym_axis + 1) % 3] @ a) * a
+    u = u / (np.linalg.norm(u) + 1e-9)
+    w = np.cross(a, u)
+    cols = [None, None, None]; cols[sym_axis] = a; cols[(sym_axis + 1) % 3] = u; cols[(sym_axis + 2) % 3] = w
+    cp2 = cp.copy(); cp2[:3, :3] = np.stack(cols, axis=1); roll_state['u'] = u
+    return cp2
+
+  def save_raw(name, color_img, depth_img):
+    if not args.save_rgb:
+      return
+    imageio.imwrite(debug_dir / 'rgb' / f'{name}.png', color_img)
+    cv2.imwrite(str(debug_dir / 'depth' / f'{name}.png'), (depth_img * 1000.0).astype(np.uint16))
 
   scorer = ScorePredictor()
   refiner = PoseRefinePredictor()
@@ -174,7 +254,17 @@ if __name__ == '__main__':
   logging.info('estimator initialization done')
 
   pose = est.register(K=K, rgb=color, depth=depth, ob_mask=init_mask, iteration=args.est_refine_iter)
-  np.savetxt(f'{args.debug_dir}/ob_in_cam/{int(frame_index or 0):06d}.txt', pose.reshape(4,4))
+  first_frame_name = f'{int(frame_index or 0):06d}'
+  np.savetxt(debug_dir / 'ob_in_cam' / f'{first_frame_name}.txt', pose.reshape(4,4))
+  print('\n' + '=' * 56, flush=True)
+  print('>>> 首帧注册完成，开始跟踪！现在可以拿起/移动/旋转针了 <<<', flush=True)
+  print('=' * 56 + '\n', flush=True)
+  save_raw(first_frame_name, color, depth)
+  if args.debug >= 1:
+    center_pose = stabilize_center(pose @ np.linalg.inv(to_origin))
+    vis = draw_posed_3d_box(K, img=color, ob_in_cam=center_pose, bbox=bbox)
+    vis = draw_xyz_axis(vis, ob_in_cam=center_pose, scale=0.1, K=K, thickness=3, transparency=0, is_input_rgb=True)
+    imageio.imwrite(debug_dir / 'track_vis' / f'{first_frame_name}.png', vis)
 
   processed = 1
   last_index = frame_index
@@ -183,13 +273,14 @@ if __name__ == '__main__':
     last_index = frame_index
     pose = est.track_one(rgb=color, depth=depth, K=K, iteration=args.track_refine_iter)
     frame_name = f'{int(frame_index or processed):06d}'
-    np.savetxt(f'{args.debug_dir}/ob_in_cam/{frame_name}.txt', pose.reshape(4,4))
+    np.savetxt(debug_dir / 'ob_in_cam' / f'{frame_name}.txt', pose.reshape(4,4))
+    save_raw(frame_name, color, depth)
 
     if args.debug >= 1:
-      center_pose = pose @ np.linalg.inv(to_origin)
+      center_pose = stabilize_center(pose @ np.linalg.inv(to_origin))
       vis = draw_posed_3d_box(K, img=color, ob_in_cam=center_pose, bbox=bbox)
       vis = draw_xyz_axis(vis, ob_in_cam=center_pose, scale=0.1, K=K, thickness=3, transparency=0, is_input_rgb=True)
-      imageio.imwrite(f'{args.debug_dir}/track_vis/{frame_name}.png', vis)
+      imageio.imwrite(debug_dir / 'track_vis' / f'{frame_name}.png', vis)
 
     print(f'tracked live mug frame {frame_name}')
     processed += 1

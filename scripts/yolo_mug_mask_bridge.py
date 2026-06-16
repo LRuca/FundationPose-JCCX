@@ -4,6 +4,8 @@ import os
 import time
 from pathlib import Path
 
+os.environ.setdefault("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
+
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -31,6 +33,7 @@ def atomic_write_mask(mask_file, mask):
 
 def atomic_write_json(json_file, payload):
     json_path = Path(json_file)
+    json_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = json_path.with_suffix(json_path.suffix + ".tmp")
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
@@ -76,12 +79,41 @@ def resolve_class_id(model, class_name):
     raise RuntimeError(f"Class '{class_name}' not found in model names: {available}")
 
 
-def predict_mask(model, image_file, class_id, conf, imgsz, min_area, device):
+def parse_roi(value):
+    if not value:
+        return None
+    parts = [int(v.strip()) for v in value.split(",")]
+    if len(parts) != 4:
+        raise ValueError("--roi must be x1,y1,x2,y2")
+    x1, y1, x2, y2 = parts
+    if x2 <= x1 or y2 <= y1:
+        raise ValueError("--roi must satisfy x2>x1 and y2>y1")
+    return x1, y1, x2, y2
+
+
+def bbox_from_mask(mask):
+    ys, xs = np.where(mask > 0)
+    if len(xs) == 0:
+        return None
+    return int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+
+
+def bbox_center_in_roi(box, roi):
+    if roi is None:
+        return True
+    x1, y1, x2, y2 = box
+    cx = (x1 + x2) * 0.5
+    cy = (y1 + y2) * 0.5
+    rx1, ry1, rx2, ry2 = roi
+    return rx1 <= cx <= rx2 and ry1 <= cy <= ry2
+
+
+def predict_mask(model, image_file, class_id, conf, imgsz, min_area, device, roi, min_bbox_height):
     image = read_image_retry(image_file)
     height, width = image.shape[:2]
 
     results = model.predict(
-        source=str(image_file),
+        source=image,
         conf=conf,
         imgsz=imgsz,
         device=device,
@@ -109,11 +141,18 @@ def predict_mask(model, image_file, class_id, conf, imgsz, min_area, device):
         area = int(np.count_nonzero(mask_u8))
         if area < min_area:
             continue
+        box = bbox_from_mask(mask_u8)
+        if box is None or not bbox_center_in_roi(box, roi):
+            continue
+        bbox_height = box[3] - box[1] + 1
+        if bbox_height < min_bbox_height:
+            continue
         candidates.append(
             {
                 "mask": mask_u8,
                 "conf": float(confs[i]),
                 "area": area,
+                "bbox": box,
                 "class_id": int(det_class),
             }
         )
@@ -143,6 +182,8 @@ def run_once(args, model, class_id, image_mtime=None):
         imgsz=args.imgsz,
         min_area=args.min_area,
         device=args.device,
+        roi=args.roi,
+        min_bbox_height=args.min_bbox_height,
     )
     atomic_write_mask(args.mask, selected["mask"])
 
@@ -156,6 +197,8 @@ def run_once(args, model, class_id, image_mtime=None):
             "class_id": selected["class_id"],
             "confidence": selected["conf"],
             "area": selected["area"],
+            "bbox": selected["bbox"],
+            "roi": args.roi,
             "num_candidates": num_candidates,
             "height": shape[0],
             "width": shape[1],
@@ -164,9 +207,34 @@ def run_once(args, model, class_id, image_mtime=None):
     )
     append_log(
         args.log,
-        f"wrote {args.mask} class={args.class_name} conf={selected['conf']:.3f} area={selected['area']}",
+        f"wrote {args.mask} class={args.class_name} conf={selected['conf']:.3f} "
+        f"area={selected['area']} bbox={selected['bbox']}",
     )
     return mtime, True
+
+
+def clear_mask(args, reason):
+    image = read_image_retry(args.image, attempts=2, interval=0.02)
+    empty = np.zeros(image.shape[:2], dtype=np.uint8)
+    atomic_write_mask(args.mask, empty)
+    meta_file = args.meta or str(Path(args.mask).with_suffix(".json"))
+    atomic_write_json(
+        meta_file,
+        {
+            "image": str(args.image),
+            "mask": str(args.mask),
+            "class_name": args.class_name,
+            "class_id": None,
+            "confidence": 0.0,
+            "area": 0,
+            "num_candidates": 0,
+            "height": int(image.shape[0]),
+            "width": int(image.shape[1]),
+            "cleared": True,
+            "reason": str(reason),
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        },
+    )
 
 
 def main():
@@ -179,11 +247,15 @@ def main():
     parser.add_argument("--conf", type=float, default=0.25)
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--min_area", type=int, default=300)
+    parser.add_argument("--roi", default=None, help="Keep masks whose bbox center is inside x1,y1,x2,y2.")
+    parser.add_argument("--min_bbox_height", type=int, default=0)
     parser.add_argument("--device", default=None, help="Ultralytics device, for example cpu or 0.")
+    parser.add_argument("--clear_on_fail", action="store_true")
     parser.add_argument("--loop", action="store_true")
     parser.add_argument("--poll_interval", type=float, default=0.2)
     parser.add_argument("--log", default="FoundationPose/live_orbbec/yolo_mug_mask_bridge.log")
     args = parser.parse_args()
+    args.roi = parse_roi(args.roi)
 
     model = YOLO(args.model)
     class_id = resolve_class_id(model, args.class_name)
@@ -194,6 +266,11 @@ def main():
         try:
             last_mtime, _ = run_once(args, model, class_id, image_mtime=last_mtime)
         except Exception as exc:
+            if args.clear_on_fail:
+                try:
+                    clear_mask(args, exc)
+                except Exception as clear_exc:
+                    append_log(args.log, f"failed to clear mask: {type(clear_exc).__name__}: {clear_exc}")
             append_log(args.log, f"no mask update: {type(exc).__name__}: {exc}")
         if not args.loop:
             break

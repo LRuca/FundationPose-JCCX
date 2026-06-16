@@ -2,7 +2,11 @@
 """Smoke test both needle_inbox models on the live camera frame."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+os.environ.setdefault("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
+
 from ultralytics import YOLO
 
 root = Path(r"C:\Users\lenovo\Desktop\JXCX")
